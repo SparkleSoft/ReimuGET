@@ -145,9 +145,10 @@ BOOL CReimuGETDlg::OnInitDialog()
     lpResLock = (char *) LockResource(hResourceLoaded);
     dwSizeRes = SizeofResource(NULL, hRes);
 	FILE * outputRes;
-	outputRes = _wfopen(L"ReimuGET_temp_aria2c.exe", L"wb");
-	fwrite ((const char *) lpResLock,1,dwSizeRes,outputRes);
-	fclose(outputRes);
+	if(outputRes = _wfopen(L"ReimuGET_temp_aria2c.exe", L"wb")) {
+		fwrite ((const char *) lpResLock,1,dwSizeRes,outputRes);
+		fclose(outputRes);
+	}
 
 	m_Connections.SetRange(1, 16);
 	m_Connections.SetPos(16);
@@ -310,6 +311,7 @@ void CReimuGETDlg::OnBnClickedButton2()
 		lvItem.iItem = ++nItem;
 		nItem++;
 		lvItem.iSubItem = 0;
+
 		lvItem.pszText = L"Queued";
 		nItem = m_FileQueue.InsertItem(&lvItem);
 
@@ -402,7 +404,7 @@ UINT DownloadFiles(LPVOID pParam) {
 				DownloadDir = L".";
 			}
 
-			int Value = CreateProcess(NULL, CString(L"ReimuGET_temp_aria2c.exe --dir " + DownloadDir + L" --max-connection-per-server " + m_FileQueue->GetItemText(i, 1) + L" --min-split-size 1M --split " + m_FileQueue->GetItemText(i, 1) + L" " + m_FileQueue->GetItemText(i, 2)).GetBuffer(), NULL, NULL, true, 0, NULL, NULL, &si, &pi);
+			int Value = CreateProcess(NULL, CString(L"ReimuGET_temp_aria2c.exe --check-certificate=false --dir \"" + DownloadDir + L"\" --max-connection-per-server " + m_FileQueue->GetItemText(i, 1) + L" --min-split-size 1M --split " + m_FileQueue->GetItemText(i, 1) + L" " + m_FileQueue->GetItemText(i, 2)).GetBuffer(), NULL, NULL, true, 0, NULL, NULL, &si, &pi);
 						
 			m_FileQueue->SetItemText(i, 0, L"Downloading");
 			

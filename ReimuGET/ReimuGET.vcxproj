@@ -94,6 +94,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="..\..\..\..\Spinner\Full\01.ico" />
     <None Include="ReadMe.txt" />
     <None Include="res\aria2c.exe" />
     <None Include="res\ReimuGET.ico" />
