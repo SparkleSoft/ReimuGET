@@ -25,7 +25,9 @@ HANDLE g_hInputFile = NULL;
 
 // Prototypes
 UINT DownloadFiles(LPVOID pParam);
-UINT CheckLog(LPVOID pParam);
+UINT ParseOutput(LPVOID pParam);
+UINT ExitReimuGET(LPVOID pParam);
+UINT InitReimuGET(LPVOID pParam);
 
 bool isDling = false, queueRunning = false, assumeError = true, killAria = false, ExitOK = false;
 int nItem = 0;
@@ -75,21 +77,21 @@ END_MESSAGE_MAP()
 
 
 CReimuGETDlg::CReimuGETDlg(CWnd* pParent /*=NULL*/)
-	: CDialogEx(CReimuGETDlg::IDD, pParent)
+	: CTrayDialog(CReimuGETDlg::IDD, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 
 void CReimuGETDlg::DoDataExchange(CDataExchange* pDX)
 {
-	CDialogEx::DoDataExchange(pDX);
+	CTrayDialog::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_LIST3, m_FileQueue);
 	DDX_Control(pDX, IDC_EDIT1, m_URL);
 	DDX_Control(pDX, IDC_SLIDER1, m_Connections);
 	DDX_Control(pDX, IDC_PROGRESS1, m_progBar);
 }
 
-BEGIN_MESSAGE_MAP(CReimuGETDlg, CDialogEx)
+BEGIN_MESSAGE_MAP(CReimuGETDlg, CTrayDialog)
 
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
@@ -107,7 +109,7 @@ END_MESSAGE_MAP()
 
 BOOL CReimuGETDlg::OnInitDialog()
 {
-	CDialogEx::OnInitDialog();
+	CTrayDialog::OnInitDialog();
 
 	// Add "About..." menu item to system menu.
 
@@ -134,11 +136,6 @@ BOOL CReimuGETDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
-
-
-
-
-
 	HGLOBAL hResourceLoaded;  // handle to loaded resource
     HRSRC   hRes;              // handle/ptr to res. info.
     char    *lpResLock;        // pointer to resource data
@@ -151,10 +148,6 @@ BOOL CReimuGETDlg::OnInitDialog()
 	outputRes = _wfopen(L"ReimuGET_temp_aria2c.exe", L"wb");
 	fwrite ((const char *) lpResLock,1,dwSizeRes,outputRes);
 	fclose(outputRes);
-
-
-
-	CWinThread* pCheckLog = AfxBeginThread(CheckLog,THREAD_PRIORITY_NORMAL);
 
 	m_Connections.SetRange(1, 16);
 	m_Connections.SetPos(16);
@@ -175,13 +168,79 @@ BOOL CReimuGETDlg::OnInitDialog()
 
 	lvColumn.mask = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH;
 	lvColumn.fmt = LVCFMT_LEFT;
-	lvColumn.cx = 294;
+	lvColumn.cx = 278;
 	lvColumn.pszText = L"URL";
 	m_FileQueue.InsertColumn(2, &lvColumn);
 
-	m_progBar.SetRange(0, 100);
+	TraySetIcon(IDR_MAINFRAME);
+	TraySetToolTip(L"ReimuGET");
+
+	CWnd* bGetFile = GetDlgItem(IDC_BUTTON3);
+	bGetFile->EnableWindow(FALSE);
+	bGetFile = GetDlgItem(IDC_BUTTON2);
+	bGetFile->EnableWindow(FALSE);
+
+	CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
+	CWinThread* pInitReimuGET = AfxBeginThread(InitReimuGET,THREAD_PRIORITY_NORMAL);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
+}
+
+UINT InitReimuGET(LPVOID pParam) {
+	CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
+	HWND hWnd = pwnd->GetSafeHwnd();
+
+	CListCtrl* m_FileQueue = (CListCtrl*)pwnd->GetDlgItem(IDC_LIST3);
+	CProgressCtrl* m_progBar = (CProgressCtrl*)pwnd->GetDlgItem(IDC_PROGRESS1);
+
+	if( PathFileExists(L"ReimuGET.csv")) {
+		int restore = AfxMessageBox(L"Would you like to restore your previous ReimuGET session?", MB_YESNO|MB_ICONQUESTION);
+		if (restore == IDYES) {
+			pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"Restoring session..."));
+
+			FILE * Session = _wfopen(L"ReimuGET.csv",L"r");
+
+			int c=0;while(!fscanf(Session,"%*[^\n]%*c"))c++;fseek(Session,0,SEEK_SET);
+
+			m_progBar->SetRange32(0, c);
+
+			char line[8192];
+			char segment[8192];
+
+			int currLine = 0;
+			while(fgets(line,8192,Session)) {
+				currLine++;
+
+				LVITEM lvItem;
+				lvItem.mask = LVIF_TEXT;
+				lvItem.iItem = ++nItem;
+				nItem++;
+				lvItem.iSubItem = 0;
+				lvItem.pszText = L"";
+				nItem = m_FileQueue->InsertItem(&lvItem);
+
+				strcpy(segment,strtok(line,","));
+				m_FileQueue->SetItemText(nItem, 0, CString(segment));
+				strcpy(segment,strtok(NULL,","));
+				m_FileQueue->SetItemText(nItem, 1,CString(segment));
+				strcpy(segment,strtok(NULL,"\n"));
+				m_FileQueue->SetItemText(nItem, 2, CString(segment));
+
+				m_progBar->SetPos(currLine);
+			}
+		}
+	}
+	
+	CWnd* bGetFile = pwnd->GetDlgItem(IDC_BUTTON3);
+	bGetFile->EnableWindow(TRUE);
+	bGetFile = pwnd->GetDlgItem(IDC_BUTTON2);
+	bGetFile->EnableWindow(TRUE);
+	m_progBar->SetRange(0, 100);
+	m_progBar->SetPos(0);
+
+	pwnd->SetDlgItemTextW(IDC_STATUS, CString(L""));
+
+	return 0;
 }
 
 void CReimuGETDlg::OnSysCommand(UINT nID, LPARAM lParam)
@@ -193,7 +252,7 @@ void CReimuGETDlg::OnSysCommand(UINT nID, LPARAM lParam)
 	}
 	else
 	{
-		CDialogEx::OnSysCommand(nID, lParam);
+		CTrayDialog::OnSysCommand(nID, lParam);
 	}
 }
 
@@ -222,7 +281,7 @@ void CReimuGETDlg::OnPaint()
 	}
 	else
 	{
-		CDialogEx::OnPaint();
+		CTrayDialog::OnPaint();
 	}
 }
 
@@ -260,7 +319,7 @@ void CReimuGETDlg::OnBnClickedButton2()
 		m_FileQueue.SetItemText(nItem, 1, connPos);
 		m_FileQueue.SetItemText(nItem, 2, dlgURL);
 	} else {
-		AfxMessageBox(L"Stop failing!");
+		AfxMessageBox(L"Please enter a URL.");
 	}
 }
 
@@ -284,7 +343,6 @@ void CReimuGETDlg::OnNMCustomdrawSlider1(NMHDR *pNMHDR, LRESULT *pResult)
 UINT DownloadFiles(LPVOID pParam) {	
 	CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
 
-	// Pointer to our progress bar....must have..
 	CListCtrl* m_FileQueue = (CListCtrl*)pwnd->GetDlgItem(IDC_LIST3);
 
 	STARTUPINFO si;
@@ -324,8 +382,6 @@ UINT DownloadFiles(LPVOID pParam) {
 
 	for (int i = 0; i < m_FileQueue->GetItemCount(); i++){
 		if (m_FileQueue->GetItemText(i, 0) != L"Done") {
-			assumeError = true;
-
 			DWORD exitCode = 0;
 			ZeroMemory( &si, sizeof(si) );
 			si.cb = sizeof(si);
@@ -348,15 +404,11 @@ UINT DownloadFiles(LPVOID pParam) {
 
 			int Value = CreateProcess(NULL, CString(L"ReimuGET_temp_aria2c.exe --dir " + DownloadDir + L" --max-connection-per-server " + m_FileQueue->GetItemText(i, 1) + L" --min-split-size 1M --split " + m_FileQueue->GetItemText(i, 1) + L" " + m_FileQueue->GetItemText(i, 2)).GetBuffer(), NULL, NULL, true, 0, NULL, NULL, &si, &pi);
 						
-			
 			m_FileQueue->SetItemText(i, 0, L"Downloading");
-			isDling = true;	
+			
+			CWinThread* pParseOutput = AfxBeginThread(ParseOutput,THREAD_PRIORITY_NORMAL);
 		
 			WaitForSingleObject(pi.hProcess, INFINITE);
-
-			isDling = false;
-
-			ExitOK = true;
 
 			GetExitCodeProcess(pi.hProcess,&exitCode);
 
@@ -364,11 +416,9 @@ UINT DownloadFiles(LPVOID pParam) {
 				assumeError = false;
 			}
 
-
-
 			pwnd->SetDlgItemTextW(IDC_ETA, L"");
-			pwnd->SetDlgItemTextW(IDC_STATUS, L"Idle");
-			m_Prog->SetPos(100);
+			pwnd->SetDlgItemTextW(IDC_STATUS, L"");
+			m_Prog->SetPos(0);
 			
 			if (assumeError == false) {
 				m_FileQueue->SetItemText(i, 0, L"Done");
@@ -412,10 +462,10 @@ BOOL CReimuGETDlg::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 
-	return CDialogEx::PreTranslateMessage(pMsg);
+	return CTrayDialog::PreTranslateMessage(pMsg);
 }
 
-UINT CheckLog(LPVOID pParam) {	
+UINT ParseOutput(LPVOID pParam) {	
 	CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
 	HWND hWnd = pwnd->GetSafeHwnd();
 
@@ -431,77 +481,75 @@ UINT CheckLog(LPVOID pParam) {
 
 	CProgressCtrl* m_Prog = (CProgressCtrl*)pwnd->GetDlgItem(IDC_PROGRESS1);
 
-	while(1) { // Yes, I should only leave this running when it is needed, but I'm lazy.
-		if (isDling == true) {
-			DWORD dwRead; 
-			BOOL bSuccess = FALSE;
-			HANDLE hParentStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD dwRead; 
+	BOOL bSuccess = FALSE;
+	HANDLE hParentStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
 
-			for (;;) { 
-				ZeroMemory(&cBuffer,BUFSIZE);
+	for (;;) { 
+		ZeroMemory(&cBuffer,BUFSIZE);
 
-				bSuccess = ReadFile( g_hChildStd_OUT_Rd, cBuffer, BUFSIZE, &dwRead, NULL);
-				if( ! bSuccess || dwRead == 0 ) break; 
+		bSuccess = ReadFile( g_hChildStd_OUT_Rd, cBuffer, BUFSIZE, &dwRead, NULL);
+		if( ! bSuccess || dwRead == 0 ) break; 
 			   
-				for (cLine = strtok_s(cBuffer, "\r\n", &cLinePos); cLine; cLine = strtok_s(NULL, "\r\n", &cLinePos)) {
-					if (cLine[0] == '[' && cLine[1] == '#') {
-						cToken = strtok (cLine,":");
+		for (cLine = strtok_s(cBuffer, "\r\n", &cLinePos); cLine; cLine = strtok_s(NULL, "\r\n", &cLinePos)) {
+			if (cLine[0] == '[' && cLine[1] == '#') {
+				cToken = strtok (cLine,":");
 					
-						downloaded = strtok(NULL,"/");
-						if (downloaded != NULL) {
-							Downloaded = CString(downloaded);
-						}
+				downloaded = strtok(NULL,"/");
+				if (downloaded != NULL) {
+					Downloaded = CString(downloaded);
+				}
 					
-						total = strtok(NULL,"(");
-						if (total != NULL) {
-							Total = CString(total);
-						}
+				total = strtok(NULL,"(");
+				if (total != NULL) {
+					Total = CString(total);
+				}
 
-						percent = strtok(NULL,"%");
-						if (percent != NULL) {
-							Percent = CString(percent);
-							Progress = _wtoi(Percent);
-						}
+				percent = strtok(NULL,"%");
+				if (percent != NULL) {
+					Percent = CString(percent);
+					Progress = _wtoi(Percent);
+				}
 						
-						strtok(NULL,":");
+				strtok(NULL,":");
 
-						connections = strtok(NULL," ");
-						if (connections != NULL) {
-							Connections = CString(connections);
-						}
+				connections = strtok(NULL," ");
+				if (connections != NULL) {
+					Connections = CString(connections);
+				}
 
-						strtok(NULL,":");
-						
-						speed = strtok(NULL," ");
-						if (speed != NULL) {
-							Speed = CString(speed);
-						}
-
-						strtok(NULL,":");
-						
-						eta = strtok(NULL,"]");
-						if (eta != NULL) {
-							ETA = CString(eta);
-						}
-					}
-				 }
-
-				m_Prog->SetPos(Progress);
+				strtok(NULL,":");
 				
-				pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"[" + Percent + L"%] Downloaded " + Downloaded + L"/" + Total + L" at " + Speed + L" with " + Connections + L" connection(s)."));
-				pwnd->SetDlgItemTextW(IDC_ETA, CString(L"Time remaining: " + ETA));
-			} 
-		} 
-		
-		Sleep(1000);
+				speed = strtok(NULL," ");
+				if (speed != NULL) {
+					Speed = CString(speed);
+				}
+
+				strtok(NULL,":");
+					
+				eta = strtok(NULL,"]");
+				if (eta != NULL) {
+					ETA = CString(eta);
+				}
+			}
+		}
+		m_Prog->SetPos(Progress);
+
+		pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"[" + Percent + L"%] Downloaded " + Downloaded + L"/" + Total + L" at " + Speed + L" with " + Connections + L" connection(s)."));
+		pwnd->SetDlgItemTextW(IDC_ETA, CString(L"Time remaining: " + ETA));
 	}
+
+	m_Prog->SetPos(0);
+
+	pwnd->SetDlgItemTextW(IDC_STATUS, CString(L""));
+	pwnd->SetDlgItemTextW(IDC_ETA, CString(L""));
 
 	return 1;
 }
 
 void CReimuGETDlg::OnClose()
 {
-	CDialogEx::OnClose();
+	CTrayDialog::OnClose();
 }
 
 void CReimuGETDlg::OnCancel()
@@ -518,21 +566,60 @@ void CReimuGETDlg::OnCancel()
 	}
 
 	if (doQuitNow == true) {
-		ExitOK = false;
-		killAria = true;
-
-		STARTUPINFO si;
-		PROCESS_INFORMATION pi;
-
-		ZeroMemory( &si, sizeof(si) );
-		si.cb = sizeof(si);
-		ZeroMemory( &pi, sizeof(pi) );
-
-		CreateProcess(NULL, CString(L"taskkill.exe /F /IM ReimuGET_temp_aria2c.exe").GetBuffer(), NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-		WaitForSingleObject(pi.hProcess, INFINITE);
-
-		CreateProcess(NULL, CString(L"cmd.exe /c del ReimuGET_temp_aria2c.exe").GetBuffer(), NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-
-		CDialogEx::OnCancel();
+		CWinThread* pExitReimuGET = AfxBeginThread(ExitReimuGET,THREAD_PRIORITY_NORMAL);
 	}
+}
+
+UINT ExitReimuGET(LPVOID pParam) {	
+	CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
+	HWND hWnd = pwnd->GetSafeHwnd();
+
+	CWnd* bGetFile = pwnd->GetDlgItem(IDC_BUTTON3);
+	bGetFile->EnableWindow(FALSE);
+	bGetFile = pwnd->GetDlgItem(IDC_BUTTON2);
+	bGetFile->EnableWindow(FALSE);
+
+	pwnd->SetDlgItemTextW(IDC_ETA, CString(L"Shutting down ReimuGET..."));
+	ExitOK = false;
+	killAria = true;
+
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+
+	ZeroMemory( &si, sizeof(si) );
+	si.cb = sizeof(si);
+	ZeroMemory( &pi, sizeof(pi) );
+
+	pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"Killing aria2c..."));
+
+	CreateProcess(NULL, CString(L"taskkill.exe /F /IM ReimuGET_temp_aria2c.exe").GetBuffer(), NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+	WaitForSingleObject(pi.hProcess, INFINITE);
+
+	pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"Deleting temp files..."));
+
+	CreateProcess(NULL, CString(L"cmd.exe /c del ReimuGET_temp_aria2c.exe").GetBuffer(), NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+	WaitForSingleObject(pi.hProcess, INFINITE);
+
+	CListCtrl* m_FileQueue = (CListCtrl*)pwnd->GetDlgItem(IDC_LIST3);
+	DeleteFile(L"ReimuGET.csv");
+	if (m_FileQueue->GetItemCount()) {
+		pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"Saving session..."));
+		CProgressCtrl* m_Prog = (CProgressCtrl*)pwnd->GetDlgItem(IDC_PROGRESS1);
+		m_Prog->SetRange32(0, m_FileQueue->GetItemCount());
+
+		CWnd* pwnd = AfxGetMainWnd(); // Pointer to main window
+		CListCtrl* m_FileQueue = (CListCtrl*)pwnd->GetDlgItem(IDC_LIST3);
+		
+		FILE* fSession = _wfopen(L"ReimuGET.csv",L"w");
+		
+		for (int i = 0; i < m_FileQueue->GetItemCount(); i++){
+			fputws(CString(m_FileQueue->GetItemText(i, 0) + L"," + m_FileQueue->GetItemText(i, 1) + L"," + m_FileQueue->GetItemText(i, 2) + L"\n"),fSession);
+			m_Prog->SetPos(i);
+		}
+		fclose(fSession);
+	}
+
+	pwnd->SetDlgItemTextW(IDC_STATUS, CString(L"Exiting..."));
+
+	exit(0);
 }

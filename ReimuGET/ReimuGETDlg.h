@@ -6,9 +6,10 @@
 #include "afxcmn.h"
 #include "afxwin.h"
 
+#include "TrayDialog.h"
 
 // CReimuGETDlg dialog
-class CReimuGETDlg : public CDialogEx
+class CReimuGETDlg : public CTrayDialog
 {
 // Construction
 public:
